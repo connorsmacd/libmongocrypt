@@ -184,7 +184,7 @@ else ()
    message (FATAL_ERROR "Unknown crypto provider ${MONGOCRYPT_CRYPTO}")
 endif ()
 
-set (BUILD_VERSION "0.0.0" CACHE STRING "Library version")
+set (BUILD_VERSION "1.17.0" CACHE STRING "Library version")
 if (BUILD_VERSION STREQUAL "0.0.0")
    if (EXISTS ${CMAKE_BINARY_DIR}/VERSION_CURRENT)
       file (STRINGS ${CMAKE_BINARY_DIR}/VERSION_CURRENT BUILD_VERSION)
