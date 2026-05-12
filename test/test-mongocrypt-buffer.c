@@ -256,6 +256,20 @@ static void _test_mongocrypt_buffer_copy_from_string_as_bson_value(_mongocrypt_t
     _mongocrypt_buffer_cleanup(&expectedLenBuf);
 }
 
+/* Verify that _mongocrypt_secure_zero wipes every byte to zero and that a
+ * subsequent read of the same memory confirms this (no UB: the buffer is still
+ * live on the stack). */
+static void _test_secure_zero_clears_memory(_mongocrypt_tester_t *tester) {
+    uint8_t data[16];
+    memset(data, 0xAA, sizeof(data));
+
+    _mongocrypt_secure_zero(data, sizeof(data));
+
+    for (uint32_t i = 0; i < sizeof(data); i++) {
+        ASSERT(data[i] == 0x00);
+    }
+}
+
 void _mongocrypt_tester_install_buffer(_mongocrypt_tester_t *tester) {
     INSTALL_TEST(_test_mongocrypt_buffer_from_iter);
     INSTALL_TEST(_test_mongocrypt_buffer_copy_from_data_and_size);
@@ -264,4 +278,5 @@ void _mongocrypt_tester_install_buffer(_mongocrypt_tester_t *tester) {
     INSTALL_TEST(_test_mongocrypt_buffer_copy_from_uint64_le);
     INSTALL_TEST(_test_mongocrypt_buffer_from_subrange);
     INSTALL_TEST(_test_mongocrypt_buffer_copy_from_string_as_bson_value);
+    INSTALL_TEST(_test_secure_zero_clears_memory);
 }

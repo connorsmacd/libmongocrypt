@@ -82,6 +82,10 @@ void _mongocrypt_buffer_set_to(const _mongocrypt_buffer_t *src, _mongocrypt_buff
 
 int _mongocrypt_buffer_cmp(const _mongocrypt_buffer_t *a, const _mongocrypt_buffer_t *b);
 
+/* Zero memory in a way that the compiler cannot optimize away. Must be called
+ * before freeing any buffer containing sensitive material (keys, plaintexts). */
+void _mongocrypt_secure_zero(void *data, uint32_t len);
+
 void _mongocrypt_buffer_cleanup(_mongocrypt_buffer_t *buf);
 
 bool _mongocrypt_buffer_empty(const _mongocrypt_buffer_t *buf);

@@ -257,8 +257,16 @@ int _mongocrypt_buffer_cmp(const _mongocrypt_buffer_t *a, const _mongocrypt_buff
     return memcmp(a->data, b->data, a->len);
 }
 
+void _mongocrypt_secure_zero(void *data, uint32_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)data;
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
 void _mongocrypt_buffer_cleanup(_mongocrypt_buffer_t *buf) {
     if (buf && buf->owned) {
+        _mongocrypt_secure_zero(buf->data, buf->len);
         bson_free(buf->data);
     }
 }
