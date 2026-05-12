@@ -86,6 +86,9 @@ int _mongocrypt_buffer_cmp(const _mongocrypt_buffer_t *a, const _mongocrypt_buff
  * before freeing any buffer containing sensitive material (keys, plaintexts). */
 void _mongocrypt_secure_zero(void *data, uint32_t len);
 
+/* Zero every byte of a NUL-terminated string. NULL-safe. */
+void _mongocrypt_secure_str_zero(char *str);
+
 void _mongocrypt_buffer_cleanup(_mongocrypt_buffer_t *buf);
 
 bool _mongocrypt_buffer_empty(const _mongocrypt_buffer_t *buf);

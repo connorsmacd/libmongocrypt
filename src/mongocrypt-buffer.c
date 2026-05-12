@@ -264,6 +264,12 @@ void _mongocrypt_secure_zero(void *data, uint32_t len) {
     }
 }
 
+void _mongocrypt_secure_str_zero(char *str) {
+    if (str) {
+        _mongocrypt_secure_zero(str, (uint32_t)strlen(str));
+    }
+}
+
 void _mongocrypt_buffer_cleanup(_mongocrypt_buffer_t *buf) {
     if (buf && buf->owned) {
         _mongocrypt_secure_zero(buf->data, buf->len);

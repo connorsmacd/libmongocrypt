@@ -16,6 +16,7 @@
 
 #include <bson/bson.h>
 
+#include "mongocrypt-buffer-private.h"
 #include "mongocrypt-log-private.h"
 #include "mongocrypt-opts-private.h"
 #include "mongocrypt-private.h"
@@ -42,9 +43,13 @@ static void _mongocrypt_opts_kms_provider_azure_cleanup(_mongocrypt_opts_kms_pro
     if (!kms_provider_azure) {
         return;
     }
+    _mongocrypt_secure_str_zero(kms_provider_azure->client_id);
     bson_free(kms_provider_azure->client_id);
+    _mongocrypt_secure_str_zero(kms_provider_azure->client_secret);
     bson_free(kms_provider_azure->client_secret);
+    _mongocrypt_secure_str_zero(kms_provider_azure->tenant_id);
     bson_free(kms_provider_azure->tenant_id);
+    _mongocrypt_secure_str_zero(kms_provider_azure->access_token);
     bson_free(kms_provider_azure->access_token);
     _mongocrypt_endpoint_destroy(kms_provider_azure->identity_platform_endpoint);
 }
@@ -53,9 +58,11 @@ static void _mongocrypt_opts_kms_provider_gcp_cleanup(_mongocrypt_opts_kms_provi
     if (!kms_provider_gcp) {
         return;
     }
+    _mongocrypt_secure_str_zero(kms_provider_gcp->email);
     bson_free(kms_provider_gcp->email);
     _mongocrypt_endpoint_destroy(kms_provider_gcp->endpoint);
     _mongocrypt_buffer_cleanup(&kms_provider_gcp->private_key);
+    _mongocrypt_secure_str_zero(kms_provider_gcp->access_token);
     bson_free(kms_provider_gcp->access_token);
 }
 
@@ -64,8 +71,11 @@ static void _mongocrypt_opts_kms_provider_local_cleanup(_mongocrypt_opts_kms_pro
 }
 
 static void _mongocrypt_opts_kms_provider_aws_cleanup(_mongocrypt_opts_kms_provider_aws_t *kms_provider_aws) {
+    _mongocrypt_secure_str_zero(kms_provider_aws->secret_access_key);
     bson_free(kms_provider_aws->secret_access_key);
+    _mongocrypt_secure_str_zero(kms_provider_aws->access_key_id);
     bson_free(kms_provider_aws->access_key_id);
+    _mongocrypt_secure_str_zero(kms_provider_aws->session_token);
     bson_free(kms_provider_aws->session_token);
 }
 

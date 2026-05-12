@@ -15,6 +15,7 @@
  */
 
 #include <mongocrypt-opts-private.h>
+#include <mongocrypt-buffer-private.h>
 
 #include <test-mongocrypt.h>
 
@@ -37,6 +38,28 @@ static void test_mongocrypt_opts_kms_providers_lookup(_mongocrypt_tester_t *test
     mongocrypt_destroy(crypt);
 }
 
+/* Verify that _mongocrypt_secure_str_zero zeros every character of a
+ * heap-allocated string while the memory is still live (no UB). */
+static void test_secure_str_zero_clears_string(_mongocrypt_tester_t *tester) {
+    const char *secret = "top-secret-credential";
+    size_t len = strlen(secret);
+    char *str = bson_strdup(secret);
+
+    _mongocrypt_secure_str_zero(str);
+
+    for (size_t i = 0; i < len; i++) {
+        ASSERT(str[i] == 0x00);
+    }
+    bson_free(str);
+}
+
+/* Verify that _mongocrypt_secure_str_zero is NULL-safe. */
+static void test_secure_str_zero_null_safe(_mongocrypt_tester_t *tester) {
+    _mongocrypt_secure_str_zero(NULL); /* must not crash */
+}
+
 void _mongocrypt_tester_install_opts(_mongocrypt_tester_t *tester) {
     INSTALL_TEST(test_mongocrypt_opts_kms_providers_lookup);
+    INSTALL_TEST(test_secure_str_zero_clears_string);
+    INSTALL_TEST(test_secure_str_zero_null_safe);
 }
