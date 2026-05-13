@@ -260,7 +260,7 @@ static bool _try_satisfying_from_cache(_mongocrypt_key_broker_t *kb, key_request
          */
         key_returned = _key_returned_prepend(kb, &kb->keys_cached, value->key_doc);
         _mongocrypt_buffer_init(&key_returned->decrypted_key_material);
-        _mongocrypt_buffer_copy_to(&value->decrypted_key_material, &key_returned->decrypted_key_material);
+        _mongocrypt_buffer_copy_to_secure(&value->decrypted_key_material, &key_returned->decrypted_key_material);
         key_returned->decrypted = true;
     }
 
@@ -971,10 +971,14 @@ bool _mongocrypt_key_broker_kms_done(_mongocrypt_key_broker_t *kb, _mongocrypt_o
                 return _key_broker_fail_w_msg(kb, "unexpected, KMS not set on key returned");
             }
 
-            if (!_mongocrypt_kms_ctx_result(&key_returned->kms, &key_returned->decrypted_key_material)) {
-                /* Always fatal. Key attempted to decrypt but failed. */
-                mongocrypt_kms_ctx_status(&key_returned->kms, kb->status);
-                return _key_broker_fail(kb);
+            {
+                _mongocrypt_buffer_t _kms_result;
+                if (!_mongocrypt_kms_ctx_result(&key_returned->kms, &_kms_result)) {
+                    /* Always fatal. Key attempted to decrypt but failed. */
+                    mongocrypt_kms_ctx_status(&key_returned->kms, kb->status);
+                    return _key_broker_fail(kb);
+                }
+                _mongocrypt_buffer_copy_to_secure(&_kms_result, &key_returned->decrypted_key_material);
             }
         } else if (key_returned->doc->kek.kms_provider == MONGOCRYPT_KMS_PROVIDER_KMIP) {
             _mongocrypt_buffer_t kek;
@@ -984,10 +988,12 @@ bool _mongocrypt_key_broker_kms_done(_mongocrypt_key_broker_t *kb, _mongocrypt_o
             }
 
             if (key_returned->doc->kek.provider.kmip.delegated) {
-                if (!_mongocrypt_kms_ctx_result(&key_returned->kms, &key_returned->decrypted_key_material)) {
+                _mongocrypt_buffer_t _kms_result;
+                if (!_mongocrypt_kms_ctx_result(&key_returned->kms, &_kms_result)) {
                     mongocrypt_kms_ctx_status(&key_returned->kms, kb->status);
                     return _key_broker_fail(kb);
                 }
+                _mongocrypt_buffer_copy_to_secure(&_kms_result, &key_returned->decrypted_key_material);
             } else if (!_mongocrypt_unwrap_key(kb->crypt->crypto,
                                                &kek,
                                                &key_returned->doc->key_material,

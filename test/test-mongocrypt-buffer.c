@@ -20,7 +20,12 @@
 #include "test-mongocrypt-assert.h"
 #include "test-mongocrypt.h"
 
+#include "mongocrypt-config.h"
 #include "mongocrypt-endian-private.h"
+
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+#include <openssl/crypto.h>
+#endif
 
 #define TEST_STRING "?????" /* 3F 3F 3F 3F 3F */
 #define TEST_INT 5555555    /* 54 C5 63 */
@@ -270,6 +275,70 @@ static void _test_secure_zero_clears_memory(_mongocrypt_tester_t *tester) {
     }
 }
 
+/* When the secure heap is initialized, _mongocrypt_buffer_init_size_secure
+ * allocates from it and _mongocrypt_buffer_cleanup uses OPENSSL_secure_free. */
+static void _test_mongocrypt_buffer_init_size_secure(_mongocrypt_tester_t *tester) {
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+    if (!CRYPTO_secure_malloc_initialized()) {
+        ASSERT(CRYPTO_secure_malloc_init(65536, 64));
+    }
+
+    _mongocrypt_buffer_t buf;
+    _mongocrypt_buffer_init_size_secure(&buf, 32);
+    ASSERT(buf.len == 32);
+    ASSERT(buf.owned);
+    ASSERT(CRYPTO_secure_allocated(buf.data));
+    _mongocrypt_buffer_cleanup(&buf);
+    ASSERT(buf.data == NULL);
+    ASSERT(!buf.owned);
+#endif
+}
+
+/* _mongocrypt_buffer_copy_to_secure produces a deep copy that lives on the
+ * secure heap (when available). */
+static void _test_mongocrypt_buffer_copy_to_secure(_mongocrypt_tester_t *tester) {
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+    if (!CRYPTO_secure_malloc_initialized()) {
+        ASSERT(CRYPTO_secure_malloc_init(65536, 64));
+    }
+
+    _mongocrypt_buffer_t src;
+    const uint8_t payload[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    ASSERT(_mongocrypt_buffer_copy_from_data_and_size(&src, payload, sizeof(payload)));
+
+    _mongocrypt_buffer_t dst;
+    _mongocrypt_buffer_init(&dst);
+    _mongocrypt_buffer_copy_to_secure(&src, &dst);
+    ASSERT(dst.len == sizeof(payload));
+    ASSERT(dst.owned);
+    ASSERT(CRYPTO_secure_allocated(dst.data));
+    ASSERT(0 == memcmp(dst.data, payload, sizeof(payload)));
+
+    _mongocrypt_buffer_cleanup(&dst);
+    _mongocrypt_buffer_cleanup(&src);
+#endif
+}
+
+/* _mongocrypt_secure_strdup copies the string into the secure heap (when
+ * available) and _mongocrypt_secure_str_free releases it. NULL-safe. */
+static void _test_mongocrypt_secure_strdup(_mongocrypt_tester_t *tester) {
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+    if (!CRYPTO_secure_malloc_initialized()) {
+        ASSERT(CRYPTO_secure_malloc_init(65536, 64));
+    }
+
+    char *const s = _mongocrypt_secure_strdup("hello-secret");
+    ASSERT(s);
+    ASSERT(CRYPTO_secure_allocated(s));
+    ASSERT(0 == strcmp(s, "hello-secret"));
+    _mongocrypt_secure_str_free(s);
+
+    /* NULL-safe */
+    _mongocrypt_secure_str_free(NULL);
+    ASSERT(_mongocrypt_secure_strdup(NULL) == NULL);
+#endif
+}
+
 void _mongocrypt_tester_install_buffer(_mongocrypt_tester_t *tester) {
     INSTALL_TEST(_test_mongocrypt_buffer_from_iter);
     INSTALL_TEST(_test_mongocrypt_buffer_copy_from_data_and_size);
@@ -279,4 +348,7 @@ void _mongocrypt_tester_install_buffer(_mongocrypt_tester_t *tester) {
     INSTALL_TEST(_test_mongocrypt_buffer_from_subrange);
     INSTALL_TEST(_test_mongocrypt_buffer_copy_from_string_as_bson_value);
     INSTALL_TEST(_test_secure_zero_clears_memory);
+    INSTALL_TEST(_test_mongocrypt_buffer_init_size_secure);
+    INSTALL_TEST(_test_mongocrypt_buffer_copy_to_secure);
+    INSTALL_TEST(_test_mongocrypt_secure_strdup);
 }

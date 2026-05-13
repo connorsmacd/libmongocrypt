@@ -123,9 +123,16 @@ typedef struct {
     bool use_need_mongo_collinfo_with_db_state;
     bool bypass_query_analysis;
 
+    /* Size in bytes of the OpenSSL secure heap. 0 = disabled (default). */
+    size_t secure_heap_size;
 } _mongocrypt_opts_t;
 
 void _mongocrypt_opts_kms_providers_cleanup(_mongocrypt_opts_kms_providers_t *kms_providers);
+
+/* Promote credential strings in @kms_providers to the OpenSSL secure heap.
+ * Called from mongocrypt_init when secure heap is enabled. No-op when secure
+ * heap is unavailable. */
+void _mongocrypt_opts_kms_providers_promote_to_secure(_mongocrypt_opts_kms_providers_t *kms_providers);
 
 /* Merge `source` into `dest`. Does not perform any memory ownership management;
  * values in `dest` will be overwritten with values from `source` without

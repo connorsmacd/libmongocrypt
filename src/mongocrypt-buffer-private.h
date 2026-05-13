@@ -78,6 +78,11 @@ void _mongocrypt_buffer_to_binary(const _mongocrypt_buffer_t *buf, struct _mongo
 
 void _mongocrypt_buffer_copy_to(const _mongocrypt_buffer_t *src, _mongocrypt_buffer_t *dst);
 
+/* Deep copy @src into @dst, allocating @dst on the OpenSSL secure heap when
+ * available (otherwise the regular heap). Caller must call
+ * _mongocrypt_buffer_cleanup on @dst. */
+void _mongocrypt_buffer_copy_to_secure(const _mongocrypt_buffer_t *src, _mongocrypt_buffer_t *dst);
+
 void _mongocrypt_buffer_set_to(const _mongocrypt_buffer_t *src, _mongocrypt_buffer_t *dst);
 
 int _mongocrypt_buffer_cmp(const _mongocrypt_buffer_t *a, const _mongocrypt_buffer_t *b);
@@ -88,6 +93,20 @@ void _mongocrypt_secure_zero(void *data, uint32_t len);
 
 /* Zero every byte of a NUL-terminated string. NULL-safe. */
 void _mongocrypt_secure_str_zero(char *str);
+
+/* Like _mongocrypt_buffer_init_size but allocates from the OpenSSL secure heap
+ * when CRYPTO_secure_malloc_initialized(). Falls back to bson_malloc otherwise.
+ * Caller must call _mongocrypt_buffer_cleanup. */
+void _mongocrypt_buffer_init_size_secure(_mongocrypt_buffer_t *buf, uint32_t len);
+
+/* Duplicate @str using OPENSSL_secure_malloc when the secure heap is
+ * initialized, otherwise bson_strdup. Caller must call
+ * _mongocrypt_secure_str_free. Returns NULL if @str is NULL. */
+char *_mongocrypt_secure_strdup(const char *str);
+
+/* Free a string allocated by _mongocrypt_secure_strdup (or bson_strdup).
+ * NULL-safe. Zeroes the string before freeing. */
+void _mongocrypt_secure_str_free(char *str);
 
 void _mongocrypt_buffer_cleanup(_mongocrypt_buffer_t *buf);
 

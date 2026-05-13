@@ -39,18 +39,26 @@ void _mongocrypt_opts_init(_mongocrypt_opts_t *opts) {
     _mongocrypt_opts_kms_providers_init(&opts->kms_providers);
 }
 
+/* Re-allocate a string field on the OpenSSL secure heap (when available).
+ * The original bson_strdup-allocated buffer is zeroed and freed. */
+static void _str_to_secure(char **str_inout) {
+    if (!*str_inout) {
+        return;
+    }
+    char *secure = _mongocrypt_secure_strdup(*str_inout);
+    _mongocrypt_secure_str_zero(*str_inout);
+    bson_free(*str_inout);
+    *str_inout = secure;
+}
+
 static void _mongocrypt_opts_kms_provider_azure_cleanup(_mongocrypt_opts_kms_provider_azure_t *kms_provider_azure) {
     if (!kms_provider_azure) {
         return;
     }
-    _mongocrypt_secure_str_zero(kms_provider_azure->client_id);
-    bson_free(kms_provider_azure->client_id);
-    _mongocrypt_secure_str_zero(kms_provider_azure->client_secret);
-    bson_free(kms_provider_azure->client_secret);
-    _mongocrypt_secure_str_zero(kms_provider_azure->tenant_id);
-    bson_free(kms_provider_azure->tenant_id);
-    _mongocrypt_secure_str_zero(kms_provider_azure->access_token);
-    bson_free(kms_provider_azure->access_token);
+    _mongocrypt_secure_str_free(kms_provider_azure->client_id);
+    _mongocrypt_secure_str_free(kms_provider_azure->client_secret);
+    _mongocrypt_secure_str_free(kms_provider_azure->tenant_id);
+    _mongocrypt_secure_str_free(kms_provider_azure->access_token);
     _mongocrypt_endpoint_destroy(kms_provider_azure->identity_platform_endpoint);
 }
 
@@ -58,12 +66,10 @@ static void _mongocrypt_opts_kms_provider_gcp_cleanup(_mongocrypt_opts_kms_provi
     if (!kms_provider_gcp) {
         return;
     }
-    _mongocrypt_secure_str_zero(kms_provider_gcp->email);
-    bson_free(kms_provider_gcp->email);
+    _mongocrypt_secure_str_free(kms_provider_gcp->email);
     _mongocrypt_endpoint_destroy(kms_provider_gcp->endpoint);
     _mongocrypt_buffer_cleanup(&kms_provider_gcp->private_key);
-    _mongocrypt_secure_str_zero(kms_provider_gcp->access_token);
-    bson_free(kms_provider_gcp->access_token);
+    _mongocrypt_secure_str_free(kms_provider_gcp->access_token);
 }
 
 static void _mongocrypt_opts_kms_provider_local_cleanup(_mongocrypt_opts_kms_provider_local_t *kms_provider_local) {
@@ -71,16 +77,66 @@ static void _mongocrypt_opts_kms_provider_local_cleanup(_mongocrypt_opts_kms_pro
 }
 
 static void _mongocrypt_opts_kms_provider_aws_cleanup(_mongocrypt_opts_kms_provider_aws_t *kms_provider_aws) {
-    _mongocrypt_secure_str_zero(kms_provider_aws->secret_access_key);
-    bson_free(kms_provider_aws->secret_access_key);
-    _mongocrypt_secure_str_zero(kms_provider_aws->access_key_id);
-    bson_free(kms_provider_aws->access_key_id);
-    _mongocrypt_secure_str_zero(kms_provider_aws->session_token);
-    bson_free(kms_provider_aws->session_token);
+    _mongocrypt_secure_str_free(kms_provider_aws->secret_access_key);
+    _mongocrypt_secure_str_free(kms_provider_aws->access_key_id);
+    _mongocrypt_secure_str_free(kms_provider_aws->session_token);
+}
+
+static void _mongocrypt_opts_kms_provider_aws_promote_to_secure(_mongocrypt_opts_kms_provider_aws_t *aws) {
+    _str_to_secure(&aws->access_key_id);
+    _str_to_secure(&aws->secret_access_key);
+    _str_to_secure(&aws->session_token);
+}
+
+static void _mongocrypt_opts_kms_provider_azure_promote_to_secure(_mongocrypt_opts_kms_provider_azure_t *azure) {
+    _str_to_secure(&azure->tenant_id);
+    _str_to_secure(&azure->client_id);
+    _str_to_secure(&azure->client_secret);
+    _str_to_secure(&azure->access_token);
+}
+
+static void _mongocrypt_opts_kms_provider_gcp_promote_to_secure(_mongocrypt_opts_kms_provider_gcp_t *gcp) {
+    _str_to_secure(&gcp->email);
+    _str_to_secure(&gcp->access_token);
 }
 
 static void _mongocrypt_opts_kms_provider_kmip_cleanup(_mongocrypt_opts_kms_provider_kmip_t *kms_provider_kmip) {
     _mongocrypt_endpoint_destroy(kms_provider_kmip->endpoint);
+}
+
+/* Promote every credential string in @kms_providers to the OpenSSL secure
+ * heap. Called from mongocrypt_init after CRYPTO_secure_malloc_init succeeds.
+ * Safe to call when secure heap is unavailable (no-op via _mongocrypt_secure_strdup). */
+void _mongocrypt_opts_kms_providers_promote_to_secure(_mongocrypt_opts_kms_providers_t *kms_providers) {
+    if (!kms_providers) {
+        return;
+    }
+    if (kms_providers->configured_providers & MONGOCRYPT_KMS_PROVIDER_AWS) {
+        _mongocrypt_opts_kms_provider_aws_promote_to_secure(&kms_providers->aws_mut);
+    }
+    if (kms_providers->configured_providers & MONGOCRYPT_KMS_PROVIDER_AZURE) {
+        _mongocrypt_opts_kms_provider_azure_promote_to_secure(&kms_providers->azure_mut);
+    }
+    if (kms_providers->configured_providers & MONGOCRYPT_KMS_PROVIDER_GCP) {
+        _mongocrypt_opts_kms_provider_gcp_promote_to_secure(&kms_providers->gcp_mut);
+    }
+    for (size_t i = 0; i < kms_providers->named_mut.len; i++) {
+        mc_kms_creds_with_id_t *const creds_with_id =
+            &_mc_array_index(&kms_providers->named_mut, mc_kms_creds_with_id_t, i);
+
+        switch (creds_with_id->creds.type) {
+        case MONGOCRYPT_KMS_PROVIDER_AWS:
+            _mongocrypt_opts_kms_provider_aws_promote_to_secure(&creds_with_id->creds.value.aws);
+            break;
+        case MONGOCRYPT_KMS_PROVIDER_AZURE:
+            _mongocrypt_opts_kms_provider_azure_promote_to_secure(&creds_with_id->creds.value.azure);
+            break;
+        case MONGOCRYPT_KMS_PROVIDER_GCP:
+            _mongocrypt_opts_kms_provider_gcp_promote_to_secure(&creds_with_id->creds.value.gcp);
+            break;
+        default: break;
+        }
+    }
 }
 
 void _mongocrypt_opts_kms_providers_cleanup(_mongocrypt_opts_kms_providers_t *kms_providers) {
@@ -334,6 +390,31 @@ void _mongocrypt_opts_set_contention_factor_fn(mongocrypt_t *crypt,
                                                _mongocrypt_contention_factor_fn contention_factor_fn) {
     BSON_ASSERT_PARAM(crypt);
     crypt->opts.contention_factor_fn = contention_factor_fn;
+}
+
+static size_t _next_pow2_min4096(size_t v) {
+    if (v < 4096) {
+        return 4096;
+    }
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+#if SIZE_MAX > 0xFFFFFFFFu
+    v |= v >> 32;
+#endif
+    return v + 1;
+}
+
+size_t mongocrypt_secure_heap_min_size(size_t max_cached_keys, size_t num_kms_providers) {
+    /* 320 bytes per cached DEK (key + buffer overhead + slack)
+     * 2048 bytes per KMS provider for credential strings
+     * 1024 bytes fixed overhead, then doubled for headroom and rounded
+     * up to a power of two (CRYPTO_secure_malloc_init requires pow2). */
+    const size_t raw = max_cached_keys * (size_t)320 + num_kms_providers * (size_t)2048 + (size_t)1024;
+    return _next_pow2_min4096(raw * 2u);
 }
 
 bool _mongocrypt_parse_optional_utf8(const bson_t *bson, const char *dotkey, char **out, mongocrypt_status_t *status) {

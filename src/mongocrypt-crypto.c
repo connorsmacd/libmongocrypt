@@ -1345,8 +1345,7 @@ bool _mongocrypt_unwrap_key(_mongocrypt_crypto_t *crypto,
     BSON_ASSERT_PARAM(encrypted_dek);
 
     // _mongocrypt_wrap_key() uses FLE1 algorithm parameters.
-    _mongocrypt_buffer_init(dek);
-    _mongocrypt_buffer_resize(dek, fle1alg->get_plaintext_len(encrypted_dek->len, status));
+    _mongocrypt_buffer_init_size_secure(dek, fle1alg->get_plaintext_len(encrypted_dek->len, status));
 
     if (!fle1alg->do_decrypt(crypto, NULL /* associated data. */, kek, encrypted_dek, dek, &bytes_written, status)) {
         return false;

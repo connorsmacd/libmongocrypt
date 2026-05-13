@@ -506,6 +506,9 @@ add_executable (test-mongocrypt ${TEST_MONGOCRYPT_SOURCES})
 # Use the static version since it allows the test binary to use private symbols
 target_include_directories (test-mongocrypt PRIVATE ./src "${CMAKE_CURRENT_SOURCE_DIR}/kms-message/src")
 target_link_libraries (test-mongocrypt PRIVATE _mongocrypt::libbson_for_static mongocrypt_static mongo::mc-mlib)
+if (MONGOCRYPT_CRYPTO STREQUAL OpenSSL)
+   target_link_libraries (test-mongocrypt PRIVATE OpenSSL::Crypto)
+endif ()
 target_include_directories (test-mongocrypt PRIVATE "${CMAKE_CURRENT_LIST_DIR}/test")
 target_compile_definitions (test-mongocrypt PRIVATE
    # Set a definition so that testcases can know where test-mongocrypt.exe was written to

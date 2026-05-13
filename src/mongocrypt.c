@@ -36,6 +36,10 @@
 #include "mongocrypt-status-private.h"
 #include "mongocrypt-util-private.h"
 
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+#include <openssl/crypto.h>
+#endif
+
 /* Assert size for interop with wrapper purposes */
 BSON_STATIC_ASSERT(sizeof(mongocrypt_log_level_t) == 4);
 
@@ -145,6 +149,12 @@ bool mongocrypt_setopt_log_handler(mongocrypt_t *crypt, mongocrypt_log_fn_t log_
 bool mongocrypt_setopt_retry_kms(mongocrypt_t *crypt, bool enable) {
     ASSERT_MONGOCRYPT_PARAM_UNINIT(crypt);
     crypt->retry_enabled = enable;
+    return true;
+}
+
+bool mongocrypt_setopt_use_secure_heap(mongocrypt_t *crypt, size_t size_bytes) {
+    ASSERT_MONGOCRYPT_PARAM_UNINIT(crypt);
+    crypt->opts.secure_heap_size = size_bytes;
     return true;
 }
 
@@ -332,7 +342,7 @@ static _loaded_csfle _try_load_csfle(const char *filepath, mongocrypt_status_t *
         /* Symbol names are qualified by the lib name and version: */                                                  \
         const char *symname = "mongo_crypt_v1_" #Name;                                                                 \
         MC_BEGIN_CAST_FUNCTION_TYPE_STRICT_IGNORE                                                                      \
-        vtable.Name = (RetType(*)(__VA_ARGS__))mcr_dll_sym(lib, symname);                                              \
+        vtable.Name = (RetType (*)(__VA_ARGS__))mcr_dll_sym(lib, symname);                                             \
         MC_END_CAST_FUNCTION_TYPE_STRICT_IGNORE                                                                        \
         if (vtable.Name == NULL) {                                                                                     \
             /* The requested symbol is not present */                                                                  \
@@ -802,7 +812,7 @@ static bool _try_enable_csfle(mongocrypt_t *crypt) {
 bool mongocrypt_init(mongocrypt_t *crypt) {
     BSON_ASSERT_PARAM(crypt);
 
-    mongocrypt_status_t *status = crypt->status;
+    mongocrypt_status_t *const status = crypt->status;
     if (crypt->initialized) {
         CLIENT_ERR("already initialized");
         return false;
@@ -817,6 +827,19 @@ bool mongocrypt_init(mongocrypt_t *crypt) {
     if (!_mongocrypt_opts_validate(&crypt->opts, status)) {
         return false;
     }
+
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+    if (crypt->opts.secure_heap_size > 0 && !CRYPTO_secure_malloc_initialized()) {
+        if (!CRYPTO_secure_malloc_init(crypt->opts.secure_heap_size, 64)) {
+            CLIENT_ERR("failed to initialize OpenSSL secure heap (size=%zu)", crypt->opts.secure_heap_size);
+            return false;
+        }
+    }
+#endif
+
+    /* Promote KMS credential strings to the secure heap (no-op when secure
+     * heap is unavailable). */
+    _mongocrypt_opts_kms_providers_promote_to_secure(&crypt->opts.kms_providers);
 
     if (crypt->opts.log_fn) {
         _mongocrypt_log_set_fn(&crypt->log, crypt->opts.log_fn, crypt->opts.log_ctx);

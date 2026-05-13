@@ -15,9 +15,14 @@
  */
 
 #include "mongocrypt-buffer-private.h"
+#include "mongocrypt-config.h"
 #include "mongocrypt-endian-private.h"
 #include "mongocrypt-util-private.h"
 #include <bson/bson.h>
+
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+#include <openssl/crypto.h>
+#endif
 
 // Require libbson 1.16.0 or newer. Fix for CDRIVER-3360 is needed.
 #if !BSON_CHECK_VERSION(1, 16, 0)
@@ -230,6 +235,23 @@ void _mongocrypt_buffer_copy_to(const _mongocrypt_buffer_t *src, _mongocrypt_buf
     dst->owned = true;
 }
 
+void _mongocrypt_buffer_copy_to_secure(const _mongocrypt_buffer_t *src, _mongocrypt_buffer_t *dst) {
+    if (src == dst) {
+        return;
+    }
+
+    BSON_ASSERT_PARAM(src);
+    BSON_ASSERT_PARAM(dst);
+
+    _mongocrypt_buffer_cleanup(dst);
+    _mongocrypt_buffer_init_size_secure(dst, src->len);
+    if (src->len == 0) {
+        return;
+    }
+    memcpy(dst->data, src->data, src->len);
+    dst->subtype = src->subtype;
+}
+
 void _mongocrypt_buffer_set_to(const _mongocrypt_buffer_t *src, _mongocrypt_buffer_t *dst) {
     if (src == dst) {
         return;
@@ -270,10 +292,72 @@ void _mongocrypt_secure_str_zero(char *str) {
     }
 }
 
+void _mongocrypt_buffer_init_size_secure(_mongocrypt_buffer_t *buf, uint32_t len) {
+    BSON_ASSERT_PARAM(buf);
+    memset(buf, 0, sizeof(*buf));
+    if (len == 0) {
+        return;
+    }
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+    if (CRYPTO_secure_malloc_initialized()) {
+        buf->data = OPENSSL_secure_malloc(len);
+        if (buf->data) {
+            buf->len = len;
+            buf->owned = true;
+            return;
+        }
+    }
+#endif
+    buf->data = bson_malloc(len);
+    buf->len = len;
+    buf->owned = true;
+}
+
+char *_mongocrypt_secure_strdup(const char *str) {
+    if (!str) {
+        return NULL;
+    }
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+    if (CRYPTO_secure_malloc_initialized()) {
+        size_t len = strlen(str) + 1;
+        char *copy = OPENSSL_secure_malloc(len);
+        if (copy) {
+            memcpy(copy, str, len);
+            return copy;
+        }
+    }
+#endif
+    return bson_strdup(str);
+}
+
+void _mongocrypt_secure_str_free(char *str) {
+    if (!str) {
+        return;
+    }
+    _mongocrypt_secure_str_zero(str);
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+    if (CRYPTO_secure_allocated(str)) {
+        OPENSSL_secure_free(str);
+        return;
+    }
+#endif
+    bson_free(str);
+}
+
 void _mongocrypt_buffer_cleanup(_mongocrypt_buffer_t *buf) {
     if (buf && buf->owned) {
         _mongocrypt_secure_zero(buf->data, buf->len);
+#ifdef MONGOCRYPT_ENABLE_CRYPTO_LIBCRYPTO
+        if (CRYPTO_secure_allocated(buf->data)) {
+            OPENSSL_secure_free(buf->data);
+            buf->data = NULL;
+            buf->owned = false;
+            return;
+        }
+#endif
         bson_free(buf->data);
+        buf->data = NULL;
+        buf->owned = false;
     }
 }
 

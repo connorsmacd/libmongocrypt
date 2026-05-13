@@ -26,6 +26,8 @@
 #include "mongocrypt-compat.h"
 #include "mongocrypt-export.h"
 
+#include <stddef.h>
+
 /* clang-format off */
 #ifndef __has_include
    #include "mongocrypt-config.h"
@@ -321,6 +323,35 @@ bool mongocrypt_setopt_log_handler(mongocrypt_t *crypt, mongocrypt_log_fn_t log_
  */
 MONGOCRYPT_EXPORT
 bool mongocrypt_setopt_retry_kms(mongocrypt_t *crypt, bool enable);
+
+/**
+ * Opt in to storing sensitive key material on OpenSSL's secure heap.
+ *
+ * The secure heap is backed by mlock-ed pages that cannot be swapped to disk.
+ * Must be called before @ref mongocrypt_init. Has no effect on builds without
+ * OpenSSL.
+ *
+ * @param[in] crypt The @ref mongocrypt_t object.
+ * @param[in] size_bytes Total heap size in bytes. Must be a power of two and
+ * >= 4096. Pass 0 to disable (the default). Use @ref
+ * mongocrypt_secure_heap_min_size to calculate a recommended minimum.
+ * @pre @ref mongocrypt_init has not been called on @p crypt.
+ * @returns A boolean indicating success. If false, an error status is set.
+ * Retrieve it with @ref mongocrypt_status.
+ */
+MONGOCRYPT_EXPORT
+bool mongocrypt_setopt_use_secure_heap(mongocrypt_t *crypt, size_t size_bytes);
+
+/**
+ * Calculate a recommended minimum secure heap size.
+ *
+ * @param[in] max_cached_keys Upper bound on simultaneously cached data
+ * encryption keys.
+ * @param[in] num_kms_providers Number of KMS providers configured.
+ * @returns Recommended size in bytes. Always a power of two and >= 4096.
+ */
+MONGOCRYPT_EXPORT
+size_t mongocrypt_secure_heap_min_size(size_t max_cached_keys, size_t num_kms_providers);
 
 /**
  * Enable support for multiple collection schemas. Required to support $lookup.
